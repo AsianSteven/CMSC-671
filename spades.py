@@ -32,14 +32,14 @@ class Game:
             round.play_hand()
             self.tricks_taken = [self.tricks_taken[i]+round.tricks_taken[i] for i in range(4)]
             top_score = max(self.tricks_taken)
-        print("Final scores were", self.tricks_taken)
+##        print("Final scores were", self.tricks_taken)
         for i in range(4):
             if self.tricks_taken[i] == top_score:
                 winner.append(round.player[i].playerID)
-        if len(winner) > 1:
-            print("Winner list was", winner, "There was a tie. The winners are:", winner)
-        else:
-            print("Winner list was", winner, "The winner is", winner)
+##        if len(winner) > 1:
+##            print("Winner list was", winner, "There was a tie. The winners are:", winner)
+##        else:
+##            print("Winner list was", winner, "The winner is", winner)
                 
 game = Game()
 game.play_game(1000)
