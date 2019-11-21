@@ -1,26 +1,8 @@
 from card import Card
 from deck import Deck
-from player import Player
+from player import OCS_Team1, OCS_Team2, OCS_Team3, OCS_Team4
 import math
 import operator
-
-# CUT-THROAT SPADES (no teams)
-#
-# AUTHOR: Wayne Nappari     DATE: 11/11/2019
-#
-# Rules: 
-# 1. A normal playing card deck consisting of 52 cards is dealt completely out to 4 players (13 cards/player)
-# 2. Game play starts with the player who had the 2 of clubs, who plays that card. Each player selects and plays
-#    one card (called a "trick").
-# 3. Players must "follow suit" whenever they have a card in the suit led by whoever started the trick.
-# 4. Winner of each trick is the person with the highest card in the suit (or highest trump card).
-# 5. The winner of a trick gets to lead the next trick and can pick whatever card they want to play next (except
-#    for spades, which cannot be led until spades have been broken (played on a trick as a trump card).
-#
-# Based on current Piazza feedback, score is simply number of tricks without a penalty, so strategy is always
-# aggressive and there is no need to consider sloughing off tricks to prevent overbids. This may change
-# later in the project...
-   
 
 # 4 cards laid on the table and determines which card is the "winner". It will need to be
 # modified to take additional rules (like trump cards) into account.
@@ -37,19 +19,24 @@ class Trick:
         self.trick.append(card_str)
         if self.suit_led is None:
             self.suit_led = card.suit
-#        elif card.suit != self.suit_led:
-#            Round.player_out_of_suit[player][self.suit_led] = True
         
     def pick_winner(self):
         highest_card = -1
         winner = None
+        trick = []
         # print(self.cards_played)
         for i in range(4):
+            trick.append(str(self.cards_played[i]))
             if self.cards_played[i].suit == self.suit_led:
                 if self.cards_played[i].rank > highest_card:
                     highest_card = self.cards_played[i].rank
                     highest_suit = self.suit_led
                     winner = i
+        for i in range(4):
+            #print(round.player[round.starting_player].get_name(), winner, trick)
+            round.player[i].collect_trick(round.player[i].get_name(), winner, trick)
+        print("Winner of trick was:", round.player[winner].get_name())
+        print("-------------------")
         return winner
                 
 # A class representing playing one round of 13 cards. Deals the cards, plays hands and
@@ -68,14 +55,13 @@ class Round:
             3 : [3, 0, 1, 2]
         }
         self.tricks_taken = [0, 0, 0, 0]
-        self.player_out_of_suit = {
-            0: {Card.SPADES: False, Card.HEARTS: False, Card.CLUBS: False, Card.DIAMONDS: False},
-            1: {Card.SPADES: False, Card.HEARTS: False, Card.CLUBS: False, Card.DIAMONDS: False},
-            2: {Card.SPADES: False, Card.HEARTS: False, Card.CLUBS: False, Card.DIAMONDS: False},
-            3: {Card.SPADES: False, Card.HEARTS: False, Card.CLUBS: False, Card.DIAMONDS: False}
-        }
-        for i in range(self.number_of_players):
-            self.player.append(Player(i))
+        self.player.append(OCS_Team1())
+        self.player.append(OCS_Team2())
+        self.player.append(OCS_Team3())
+        self.player.append(OCS_Team4())
+        
+        #for i in range(self.number_of_players):
+        #    self.player.append(Player(i))
             
     # shuffle cards and deal them all out to the players
     def deal(self):
@@ -102,21 +88,23 @@ class Round:
             self.player[i].new_hand(names)
         self.deal()
         for i in range(4):
-            self.player[i].hand_copy = self.player[i].hand.copy()
-            self.player[i].hand_copy.sort(key=lambda x: x.sort_key)
+            self.player[i]._hand_copy = self.player[i]._hand.copy()
+            self.player[i]._hand_copy.sort(key=lambda x: x.sort_key)
         for i in range(13):
             self.starting_player = self.play_trick(i, self.starting_player)
             self.tricks_taken[self.starting_player] += 1
-            # print("-------------------")
-        # print("Scores:", self.tricks_taken)
-        for i in range(4):
-            print("{0},{1}".format(self.player[i].hand_copy, self.tricks_taken[i]))
 
-#round = Round()
+        print('Result of hand:', self.tricks_taken)
+        print("-------------------")
+        # print("Scores:", self.tricks_taken)
+##            for i in range(4):
+##                print("{0},{1}".format(self.player[i].hand_copy, self.tricks_taken[i]))
+
+round = Round()
 #round.deal()
 #for i in range(4):
 #    print("Team:", round.player[i].get_name(), "hand:", round.player[i].get_hand())
-#round.play_hand()
+round.play_hand()
         
 
 
