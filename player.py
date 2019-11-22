@@ -146,7 +146,7 @@ class Player:
 
         def drop_card(rank, suit):
             # since you're playing this card, remove it from your hand
-            print("{0} played {1} from hand {2}".format(self.name, Card(rank, suit), self._hand))
+            # print("{0} played {1} from hand {2}".format(self.name, Card(rank, suit), self._hand))
             self._hand.remove(Card(rank, suit))
             return Card.ranks[rank] + Card.suits[suit]
 
