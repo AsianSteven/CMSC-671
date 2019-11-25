@@ -2,7 +2,7 @@ from round import Round
 
 # CUT-THROAT SPADES (no teams)
 #
-# AUTHOR: Wayne Nappari     DATE: 11/11/2019
+# AUTHOR: Wayne Nappari     DATE: 11/24/2019
 #
 # Rules: 
 # 1. A normal playing card deck consisting of 52 cards is dealt completely out to 4 players (13 cards/player)
@@ -20,26 +20,24 @@ from round import Round
 class Game:
     def __init__(self):
         self.tricks_taken = [0, 0, 0, 0]
+        self.round = Round()
 
     def play_game(self, cutoff):
         winner = []
-        round = Round()
         top_score = 0
-        #while top_score < cutoff:
-
-        for i in range(1000):
-            round.tricks_taken = [0, 0, 0, 0]
-            round.play_hand()
-            self.tricks_taken = [self.tricks_taken[i]+round.tricks_taken[i] for i in range(4)]
+        while top_score < cutoff:
+            self.round.tricks_taken = [0, 0, 0, 0]
+            self.round.play_hand()
+            self.tricks_taken = [self.tricks_taken[i]+self.round.tricks_taken[i] for i in range(4)]
             top_score = max(self.tricks_taken)
-##        print("Final scores were", self.tricks_taken)
+        print("Final scores were", self.tricks_taken)
         for i in range(4):
             if self.tricks_taken[i] == top_score:
-                winner.append(round.player[i].playerID)
-##        if len(winner) > 1:
-##            print("Winner list was", winner, "There was a tie. The winners are:", winner)
-##        else:
-##            print("Winner list was", winner, "The winner is", winner)
+                winner.append(self.round.player[i].playerID)
+        if len(winner) > 1:
+            print("Winner list was", winner, "There was a tie. The winners are:", winner)
+        else:
+            print("Winner list was", winner, "The winner is", winner)
                 
 game = Game()
 game.play_game(1000)

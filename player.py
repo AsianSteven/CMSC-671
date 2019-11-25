@@ -1,7 +1,83 @@
-from card import Card
-from deck import Deck
 import math
+import random
 import operator
+import numpy
+
+# Simple class representing a card
+class Card:
+    # Some Class-level constants for human readability of code
+    NR_SUITS = 4
+    SPADES = 0
+    HEARTS = 1
+    CLUBS = 2
+    DIAMONDS = 3
+
+    JACK =  9
+    QUEEN = 10
+    KING = 11
+    ACE = 12
+    
+    suits = ['S', 'H', 'C', 'D']
+    ranks = ['2', '3', '4', '5', '6', '7', '8', '9', 'T', 'J', 'Q', 'K', 'A']
+
+    def __init__(self, rank, suit):
+        self.suit = suit
+        self.rank = rank
+        self.sort_key = self.suit*13 + self.rank
+
+    # secondary constructor to handle the 'AD' (for Ace of Diamonds)
+    # type of argument.
+    @classmethod
+    def create(cls, string):
+        assert len(string) == 2
+        rank = Card.ranks.index(string[0])
+        suit = Card.suits.index(string[1])
+        card = cls(rank, suit)
+        return card
+
+    def __eq__(self, other):
+        if other is None:
+            return None
+        if (self.suit == other.suit) and (self.rank == other.rank):
+            return True
+        return False
+
+
+    def __gt__(self, other):
+        if other is None:
+            return None
+        if self.suit == other.suit:
+            return self.rank > other.rank
+##        if self.suit == Card.SPADES:
+##            return True
+        return False
+
+    def __lt__(self, other):
+        if other is None:
+            return None
+        if self.suit == other.suit:
+            return self.rank < other.rank
+        return False
+    
+    def __hash__(self):
+        return hash((self.sort_key, self.suit, self.rank))
+    
+    def __repr__(self):
+        return "{0}{1}".format(Card.ranks[self.rank], Card.suits[self.suit])
+
+    def __str__(self):
+        return "{0}{1}".format(Card.ranks[self.rank], Card.suits[self.suit])
+
+# A simple class representing an entire deck of playing cards. Simply
+# creates the deck of 52 cards and has a procedure to randomly shuffle them.
+class Deck:
+    def __init__(self):
+        self.deck = []
+        for suit in range(len(Card.suits)):
+            for rank in range(len(Card.ranks)):
+                self.deck.append(Card(rank, suit))
+    def shuffle(self):
+        random.shuffle(self.deck)
 
 # Class representing the Player
 class Player:
@@ -19,8 +95,8 @@ class Player:
         self._hand = []
         # a copy of the hand used to maintain its initial state for printing out later
         self._hand_copy = []
+        self.unseen_cards = []
         # list of all cards that the agent hasn't seen (either in its own hand or played in a trick)
-        self.__unseen_cards = {}
         # the cards in your hand broken down by suit (and ordered by rank)
         self.__cards = {Card.SPADES: [], Card.HEARTS: [], Card.CLUBS: [], Card.DIAMONDS: []}
         self.__card_count = [0, 0, 0, 0]
@@ -45,14 +121,14 @@ class Player:
         # populates the dictionary of "unseen" cards. before play begins, all cards are unseen...
         deck = Deck()
         for card in deck.deck:
-            self.__unseen_cards[card] = True
+            self.unseen_cards.append(str(card))
 
     # This function is called every time the agent is asked to play a card. It
     # splits the cards in the agent's hand and the remeaining outstanding (unseen)
     # cards into rank-ordered groups by suit. These variables make it easier to
     # make decisions in the code.
     #
-    def __arrange_cards__(self):
+    def arrange_cards(self):
         self.__cards = {Card.SPADES: [], Card.HEARTS: [], Card.CLUBS: [], Card.DIAMONDS: []}
         self.__card_count = [0, 0, 0, 0]
         self.__outstanding_cards = {Card.SPADES: [], Card.HEARTS: [], Card.CLUBS: [], Card.DIAMONDS: []}
@@ -63,23 +139,22 @@ class Player:
         self.__non_winners = [ [], [], [], [] ]
         for card in self._hand:
             self.__cards[card.suit].append(card.rank)
-        for card in self.__unseen_cards:
-            if self.__unseen_cards[card]:
-                self.__outstanding_cards[card.suit].append(card.rank)
-        for suit in range(4):
+        for card in self.unseen_cards:
+            rank = Card.ranks.index(card[0])
+            suit = Card.suits.index(card[1])
+            self.__outstanding_cards[suit].append(rank)
+        for suit in range(Card.NR_SUITS):
             self.__cards[suit].sort()
             self.__card_count[suit] = len(self.__cards[suit])
             self.__outstanding_cards[suit].sort()
             self.__outstanding_card_count[suit] = len(self.__outstanding_cards[suit])
             if self.__card_count[suit] > 0:
                 for j in range(self.__card_count[suit]):
-                    if self.__outstanding_card_count[suit] > 0 and self.__cards[suit][j] > self.__outstanding_cards[suit][-1]:
-                        # cards greater than the highest outstanding suit
-                        print('debug: adding max card in suit', Card(self.__cards[suit][j], suit))
-                        self.__potential_winners[suit].append(self.__cards[suit][j])
-                    elif self.__outstanding_card_count[suit] == 0:
+                    if self.__outstanding_card_count[suit] == 0:
                         # there are no outstanding cards in this suit, so in the absence of trump these are winners
-                        print('debug: no cards (other than mine) exist in the suit:', Card.suits[suit])
+                        self.__potential_winners[suit].append(self.__cards[suit][j])
+                    elif self.__cards[suit][j] > self.__outstanding_cards[suit][-1]:
+                        # cards greater than the highest outstanding suit
                         self.__potential_winners[suit].append(self.__cards[suit][j])
                     else:
                         # these cards could be beaten by another player at this point, so they shouldn't be used
@@ -92,8 +167,114 @@ class Player:
         # guarantee the cards are uniformly distributed. In fact, it's unlikely. This is just used as a
         # simple heuristic to decide whether or not a card has potential as a winner
         self.__potential_full_rounds = [math.floor(x/3) for x in self.__outstanding_card_count]
-
         #print("my card count", self.__card_count, "outstanding card count:", self.__outstanding_card_count)
+
+    def mark_as_seen(self, card):
+        if card in self.unseen_cards:
+            self.unseen_cards.remove(card)
+        assert card not in self.unseen_cards, print(card, 'in', self.unseen_cards)
+        
+    # Looks for potentially exploitable card patterns to inform strategy. For example, a high suit count
+    # with the more winners tha potential full rounds would get a human to "try to run the suit" as a strategy
+    # for that suit. Same when leading with any suit you alone hold (in the absence of trumps).
+    # Returns a non-winner card that will hopefully lead to the promotion of another card in the suit if one
+    # exits.
+    def find_most_promising_lead(self):
+        all_unplayed_cards = {Card.SPADES: [], Card.HEARTS: [], Card.CLUBS: [], Card.DIAMONDS: []}
+        order_of_cards = {Card.SPADES: [], Card.HEARTS: [], Card.CLUBS: [], Card.DIAMONDS: []}
+        a = [(v, i) for i, v in enumerate(self.__card_count) if v > 0]
+        a.sort()
+        b = []
+        for v in a:
+            _, value = v
+            b.append(value)
+        #print('a', a, 'b', b)
+        for suit in b:
+            # only consider suits where you actually have a card to play...
+            if self.__cards[suit] != []:
+                all_unplayed_cards[suit] = self.__cards[suit] + self.__outstanding_cards[suit]
+                all_unplayed_cards[suit].sort(reverse=True)
+                st = set(self.__cards[suit])
+                for idx, val in enumerate(all_unplayed_cards[suit]):
+                    if val in st:
+                        order_of_cards[suit].append((idx, val))
+        #print(order_of_cards)
+        # Now cards are arranged in order of importance. We know winners (importance 0) should be played
+        # by the lead routine, so we to look for any suit with cards of importance 1 in cards we have more
+        # than 1 card and lead the lower card to try to promote that first card
+        #
+        # Heuristic #1: Fish for a suit where you might be able to promote the rank 1 ordered by suit length
+        for suit in b: # b is a list of suits with at least 1 card
+            for i in range(len(order_of_cards[suit])):
+                order, rank = order_of_cards[suit][i]
+                # print(order_of_cards[suit][i])
+                # quick shortcut...if somehow this was the best card in the suit, play it!
+                if order == 0:
+                    return Card(rank, suit)
+                # otherwise, if suits have more than 1 card look for a suit with the second
+                # highest card. If you find one, play the next highest card in the suit you
+                # have trying to flush out that higher card
+                if len(order_of_cards[suit]) > 1:
+                    if order == 1:
+                        if i+1 < len(order_of_cards[suit]):
+                            order, rank = order_of_cards[suit][i+1]
+                            return Card(rank, suit)
+                # the suit must have 1 card. If it's order is low, discard it
+                else:
+                    low_order = math.floor(len(all_unplayed_cards[suit]) / 2)
+                    if order > low_order:
+                        return Card(rank, suit)
+        return None
+                
+    def find_most_promising_follow(self, suit):
+        #print("find most promising follow called")
+        all_unplayed_cards = {Card.SPADES: [], Card.HEARTS: [], Card.CLUBS: [], Card.DIAMONDS: []}
+        order_of_cards = {Card.SPADES: [], Card.HEARTS: [], Card.CLUBS: [], Card.DIAMONDS: []}
+        a = [(v, i) for i, v in enumerate(self.__card_count) if v > 0 if i == suit]
+        a.sort()
+        b = []
+        for v in a:
+            _, value = v
+            b.append(value)
+        #print('b was:', b)
+        # only consider suits where you actually have a card to play...
+        if self.__cards[suit] != []:
+            all_unplayed_cards[suit] = self.__cards[suit] + self.__outstanding_cards[suit]
+            all_unplayed_cards[suit].sort(reverse=True)
+            st = set(self.__cards[suit])
+            for idx, val in enumerate(all_unplayed_cards[suit]):
+                if val in st:
+                    order_of_cards[suit].append((idx, val))
+        # print(order_of_cards)
+        if len(order_of_cards[suit]) == 0:
+            #print("apparently order of cards[suit] had length 0")
+            return None
+        # Now cards are arranged in order of importance. We know winners (importance 0) should be played
+        # by the lead routine, so we to look for any suit with cards of importance 1 in cards we have more
+        # than 1 card and lead the lower card to try to promote that first card
+        #
+        # Heuristic #1: Fish for a suit where you might be able to promote the rank 1 ordered by suit length
+        for i in range(len(order_of_cards[suit])):
+            order, rank = order_of_cards[suit][i]
+            # print(order_of_cards[suit][i])
+            # quick shortcut...if somehow this was the best card in the suit, play it!
+            if order == 0:
+                return Card(rank, suit)
+            # otherwise, if suits have more than 1 card look for a suit with the second
+            # highest card. If you find one, play the next highest card in the suit you
+            # have trying to flush out that higher card
+            if len(order_of_cards[suit]) > 1:
+                if order == 1:
+                    if i+1 < len(order_of_cards[suit]):
+                        order, rank = order_of_cards[suit][i+1]
+                        return Card(rank, suit)
+            # the suit must have 1 card. If it's order is low, discard it
+            else:
+                low_order = math.floor(len(all_unplayed_cards[suit]) / 2)
+                if order > low_order:
+                    return Card(rank, suit)
+        return None
+
 
     # AGENT API FUNCTION get_name(self)
     #
@@ -121,12 +302,15 @@ class Player:
         self.playerID = names.index(self.get_name())
         self._hand = []
         self._hand_copy = []
-        self.__unseen_cards = {}
+        self.unseen_cards = []
+        self.__cards.clear()
         self.__cards = {Card.SPADES: [], Card.HEARTS: [], Card.CLUBS: [], Card.DIAMONDS: []}
         self.__card_count = [0, 0, 0, 0]
+        self.__outstanding_cards.clear()
         self.__outstanding_cards = {Card.SPADES: [], Card.HEARTS: [], Card.CLUBS: [], Card.DIAMONDS: []}
         self.__outstanding_card_count = [0, 0, 0, 0]
         self.__potential_full_rounds = [0, 0, 0, 0]
+        self.__player_out_of_suit.clear()
         self.__player_out_of_suit = {
             0: {Card.SPADES: False, Card.HEARTS: False, Card.CLUBS: False, Card.DIAMONDS: False},
             1: {Card.SPADES: False, Card.HEARTS: False, Card.CLUBS: False, Card.DIAMONDS: False},
@@ -139,7 +323,7 @@ class Player:
         # before receiving your hand, all cards are unseen...
         deck = Deck()
         for card in deck.deck:
-            self.__unseen_cards[card] = True
+            self.unseen_cards.append(str(card))
     
     # AGENT API FUNCTION add_cards_to_hand(self, cards)
     #
@@ -154,7 +338,7 @@ class Player:
             suit = Card.suits.index(c[1])
             card = Card(rank, suit)
             self._hand.append(card)
-            self.__unseen_cards[card] = False
+            self.mark_as_seen(c)
         
     # UTILITY FUNCTION markup_status_of_cards_in_trick(self, trick)
     #
@@ -168,7 +352,7 @@ class Player:
             rank = Card.ranks.index(c[0])
             suit = Card.suits.index(c[1])
             card = Card(rank, suit)
-            self.__unseen_cards[card] = False
+            self.mark_as_seen(c)
             # if suit_led is None, this is the first card in the trick so save it
             if suit_led is None:
                 suit_led = card.suit
@@ -179,33 +363,53 @@ class Player:
                 
     # AGENT API FUNCTION play_card(self, lead, trick)
     #
-    # This will likely be the bulk of your code. This method takes two
-    # arguments, the name of the player who is leading the trick, and a
-    # list of two character strings of the cards that have been played
-    # so far this trick. This method should return a single two character
-    # string representing the card your agent has chosen to play. From
-    # this method your agent should also track which cards are left in
-    # its hand.
+    # This will likely be the bulk of your code. This method takes two arguments, the name of the
+    # player who is leading the trick, and a list of two character strings of the cards that have
+    # been played so far this trick. This method should return a single two character string
+    # representing the card your agent has chosen to play. From this method your agent should also
+    # track which cards are left in its hand.
 
-    # ** This is an important procedure for future modification **
-    # It starts by simply playing the highest card it has in the suit it must follow
-    #    NOTE: This does not use any real AI techniques yet, just some basic
-    #          rules of thumb such as:
-    #          1. If you have the highest unplayed card in the suit played, play it to take the round.
-    #          2. If you cannot win the trick, play the lowest card in the suit played.
-    #          3. If you cannot follow suit, play the lowest card in another suit.
+    # The majority of "strategic" play takes place relative early in the hand when cards are plentiful.
+    # Later in the hand, your choices become increasingly limited, particularly when you're not leading.
 
+    # This first attempt at an AI agent will use a simplification based in part on the no-trump assumption.
+    # It will assume all cards of a particular not in a suit are uniformly distributed across other hands.
+    # This doesn't seem like a "terrible" assumption to make as discards of worthless cards in other suits
+    # "could" be useless. Where it's vulnerable are hands with a highly skewed distribution of cards - but
+    # human players can also be dominated by highly unlikely card distributions.
 
-    # POTENTIAL PLAYS
-    # 1. Try to win a trick by playing the highest card in the suit
-    # 2. Discard a card by playing the lowest card in the quit OR another non-spade
-    # 3. Slough off a card by playing the highest "non-winner" you have (to reduce the
-    #    chance of unwanted tricks later in the round)
+    # With this assumption, the "min" agent will always try to take the trick away from you with the highest
+    # card in it's hand and discard 2 low cards or discard 3 low cards if it will certainly lose.
+
+    # Your opportunities when not in the lead are to take the trick if you can or discard (sluff). You will
+    # will always try to choose what you view as the most useless card in your hand to discard.
+
+    # Where you get to attempt to play a real strategy is going to be limited to leading a trick. Here you
+    # will take all the tricks you can and then try to use a min-max tree to choose which losing card to
+    # lead. You should not try any finesse from the lead position because you're assumption is that your
+    # opponent will always take the trick with a higher card.
+
+    # In version 1 of this code, there are no trumps. What you play is determined by your
+    # playing order in the trick.
+    #
+    # If you're the lead in on the trick, you get to choose what to play. The initial strategy
+    # is to attempt to play all your winning cards first (either the highest card in the suit or
+    # any suits you alone hold). Otherwise play the lowest card in a suit.
+    #
+    # If you're not the lead on the trick, you must follow suit if you can. You can take the trick
+    # if you have the highest card in the suit (obviously), or you can sluff off the trick (play low),
+    # or, if you're the last player in the trick, you can take it with the lowest possible card. If
+    # you have more than 2 cards, you could choose to play your 2nd highest card but would only want
+    # to do that if it is higher than cards already played.
+    #
+    # If you're not in the lead and cannot follow suit, in spades or bridge you could play a trump if
+    # there is a trump suit. Otherwise, all you can do is discard a card of another suit. Any strategy
+    # involved here is involved in choosing which suit and rank to discard. If you're strong in another
+    # suit, keep those cards.
 
     def play_card(self, lead, trick):
 
-        # does the trick contain any cards in the current suit?
-        # if so, get the highest card
+        # does the trick contain any cards in the current suit? if so, get the highest card
         def highest_card_played_in_suit(suit, trick):
             highest_rank = -1
             for i in trick:
@@ -217,8 +421,10 @@ class Player:
 
         def drop_card(rank, suit):
             # since you're playing this card, remove it from your hand
-            print("{0} played {1} from hand {2}".format(self.name, Card(rank, suit), self._hand))
-            self._hand.remove(Card(rank, suit))
+            card = Card(rank, suit)
+            print("{0} played {1} from hand {2}".format(self.name, card, self._hand))
+            self._hand.remove(card)
+            #self.mark_as_seen(str(card))
             return Card.ranks[rank] + Card.suits[suit]
 
         # Pick a card to lead. Allows you to pick both the suit to lead and the card.
@@ -230,15 +436,16 @@ class Player:
                     # if all other players are out of the suit or it's the highest card still in the suit, play it
                     if self.__outstanding_card_count[suit] == 0 or self.__cards[suit][-1] > self.__outstanding_cards[suit][-1]:
                         return Card(self.__cards[suit][-1], suit)
+            card = self.find_most_promising_lead()
+            if card is not None:
+                return card
             # Don't believe you have any winners right now, so pick another card.
             # Simple trategy at this point: Try to pick a the lowest card in a suit where you have at least
             # 2 cards with the hope you promote your other card to a winner...
             if self.__card_count[Card.HEARTS] > 1 or self.__card_count[Card.CLUBS] > 1 or self.__card_count[Card.DIAMONDS] > 1 or self.__card_count[Card.SPADES] > 1:
                 # candidate suits are suits with more than 1 card
                 candidates = [(self.__cards[i][0], i) for i, j in enumerate(self.__card_count) if j > 1]
-                # print("candidates check 1:", candidates)
                 lowest_rank, lowest_suit = min(candidates, key=operator.itemgetter(1))
-                # print("returning 1:", Card(lowest_rank, lowest_suit))
                 return Card(lowest_rank, lowest_suit)
             # Late in the hand, you will have 1 or fewer cards in each trick
             else:
@@ -255,23 +462,9 @@ class Player:
                     return Card(highest_rank, highest_suit)
 
         def pick_a_card_to_follow_suit(suit_led):
-            #
-            # If it's past the first turn (turns 2-4), you must follow suit if you can.
-            # If you're in turns 2-3, you can try to take the trick if you have the highest card of
-            # the suit OR you can try to finesse a trick
-            # OR if you're out of the suit and have a spade.
-            #
-            # If you're the last player in the hand, you can take the trick if you want (and can) using
-            # the lowest winning card in your hand (or a spade if out).
-            #
-            # If you can't win the trick (you have one or more cards in the suit but none are greater
-            # than the highest card already played), you can discard
-            #
-
             # Quick shortcut. If you only have 1 card in the suit led, you must play it
             if len(self.__cards[suit_led]) == 1:
                 return Card(self.__cards[suit_led][0], suit_led)
-
             # Otherwise, find out the highest card outstanding and the max and min cards in
             # the suit in the agent's hand...
             highest_card_in_trick = highest_card_played_in_suit(suit_led, trick)
@@ -290,10 +483,22 @@ class Player:
                     return Card(min(list(filter(lambda x: x > highest_card_in_trick, self.__cards[suit_led]))), suit_led)
                 # otherwise, we should be in tricks 2 or 3 here
                 # if you have the highest card remaining, play it
-                if len(self.__outstanding_cards[suit_led]) > 0 and max_card_in_suit > self.__outstanding_cards[suit_led][-1]:
+                # DEBUGGING CODE for evaluating whether or not a simple finesse might be attempted
+                # When using min-max (or something else), we can get rid of heuristics...
+                if len(self.__outstanding_cards[suit_led]) > 0:
+                    print('outstanding cards in suit', [c + 2 for c in self.__outstanding_cards[suit_led]],
+                          'max card you hold', max_card_in_suit+2,
+                          'highest card played', highest_card_in_trick+2,
+                          'highest card still hidden', self.__outstanding_cards[suit_led][-1]+2)
+                if len(self.__outstanding_cards[suit_led]) == 0 or max_card_in_suit > self.__outstanding_cards[suit_led][-1]:
                     return Card(max_card_in_suit, suit_led)
                 # otherwise, hold it in reserve and drop the lowest card if you can
                 else:
+                    card = self.find_most_promising_follow(suit_led)
+                    if card is not None:
+                        print('flagged card:', card, 'highest_card', highest_card_in_trick)
+                        if card.rank > highest_card_in_trick:
+                            return(card)
                     return Card(min_card_in_suit, suit_led)
 
         # Pick a non-led card to discard. This procedure chooses a card to play when you
@@ -307,14 +512,11 @@ class Player:
             # trick and hope the suit with the most cards in your hand can
             # become dominant.
             have_lots_of_these_suits = []
-            for i in range(4):
+            for i in range(Card.NR_SUITS):
                 if self.__card_count[i] > self.__potential_full_rounds[i] + 1:
                     have_lots_of_these_suits.append(i)
             long_suits = [Card.suits[s] for s in have_lots_of_these_suits]
-            if long_suits != []:
-                print('card count:', self.__card_count, 'potential full rounds:', self.__potential_full_rounds)
-                print("have a lot of these suits:", long_suits)
-            for i in range(4):
+            for i in range(Card.NR_SUITS):
                 if len(have_lots_of_these_suits) == 0 and i not in have_lots_of_these_suits:
                     if self.__outstanding_card_count[i] >= 2 and self.__card_count[i] == 2:
                         if self.__cards[i][-1] > self.__outstanding_cards[i][-1] and self.__cards[i][-2] < self.__outstanding_cards[i][-1]:
@@ -323,36 +525,31 @@ class Player:
             # otherwise, find the suit with the lowest loser card
             loser_suit = None
             loser_rank = 99
-            for i in range(4):
+            for i in range(Card.NR_SUITS):
                 if len(self.__non_winners[i]) > 0:
                     if self.__non_winners[i][0] < loser_rank:
                         loser_rank = self.__non_winners[i][0]
                         loser_suit = i
-            # print("discarding loser:", Card(loser_rank, loser_suit))
             if loser_suit is not None:
                 return Card(loser_rank, loser_suit)
             # all cards are winners, so discard the lowest_winner
             if loser_suit is None:
                 lowest_winner_suit = None
                 lowest_winner_rank = 99
-                for i in range(4):
+                for i in range(Card.NR_SUITS):
                     if len(self.__potential_winners[i]) > 0:
                         if self.__potential_winners[i][0] < lowest_winner_rank:
                             lowest_winner_rank = self.__potential_winners[i][0]
                             lowest_winner_suit = i
             if lowest_winner_suit is not None:
-                  # print("discarding lowest winner:", Card(lowest_winner_rank, lowest_winner_suit))
                   return Card(lowest_winner_rank, lowest_winner_suit)
 
         # BEGIN BODY OF play_card   #########################################################
         #
 
-        
         self._hand.sort(key=lambda x: x.sort_key)
-        # print("player", self."hand", self._hand, "hand copy", self._hand_copy)
-        self.markup_status_of_cards_in_trick(trick)
-        self.__arrange_cards__()
-
+        self.arrange_cards()
+        
         # If no cards in the trick so far, it's the first time so you get to pick any card
         if len(trick) == 0:
             card = pick_a_card_to_lead_with()
@@ -380,7 +577,7 @@ class Player:
     #
     def collect_trick(self, lead, winner, trick):
         # if you're the winner of the trick, increment the number of tricks taken
-        if self.name == winner:
+        if self.get_name() == winner:
             self.__trick_taken += 1
         self.markup_status_of_cards_in_trick(trick)
         
@@ -394,7 +591,7 @@ class Player:
 
 class OCS_Team1(Player):
     def __init__(self):
-        Player.__init__(self, "Matthew")
+        Player.__init__(self, "Matt")
 
 class OCS_Team2(Player):
     def __init__(self):
